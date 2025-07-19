@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lovci Agentů KGB/GRU: Kyvadlo Pravdy</title>
+    <style>
+        /* Trocha stylu, aby to vypadalo hezky */
+        body { font-family: 'Arial', sans-serif; background-color: #f0f0f0; color: #333; margin: 20px; line-height: 1.6; }
+        .container { max-width: 800px; margin: auto; background-color: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); border: 2px solid #a00; } /* Barvy Pravého Bloku! */
+        h1 { color: #a00; text-align: center; margin-bottom: 25px; } /* Pro odhalení! */
+        #game-output { background-color: #e9e9e9; padding: 20px; border-radius: 5px; min-height: 200px; margin-bottom: 20px; border-left: 5px solid #a00; }
+        .choices button { display: block; width: 100%; padding: 12px; margin-bottom: 10px; background-color: #0056b3; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 17px; transition: background-color 0.3s ease, transform 0.1s ease; font-weight: bold; }
+        .choices button:hover { background-color: #003d82; transform: translateY(-2px); }
+        .choices button:active { transform: translateY(0); }
+        .kyvadlo-info { font-weight: bold; color: #a00; margin-top: 10px; border-top: 1px solid #a00; padding-top: 10px; }
+        .agent-exposed { color: green; font-weight: bold; }
+        .fooled { color: red; font-weight: bold; }
+        .cibulka-mention { font-style: italic; color: #555; font-size: 0.9em; margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 10px; }
+        
+        /* Styly pro kyvadlo mini-hru */
+        #kyvadlo-game-area { text-align: center; margin-top: 30px; }
+        #kyvadlo-display {
+            width: 100px;
+            height: 100px;
+            margin: 20px auto;
+            position: relative;
+            overflow: hidden;
+            border: 2px solid #a00;
+            background-color: #f9f9f9;
+        }
+        #kyvadlo-bob {
+            width: 30px;
+            height: 30px;
+            background-color: gold;
+            border-radius: 50%;
+            position: absolute;
+            top: 10px; /* Start position relative to #kyvadlo-display */
+            left: 50%;
+            transform: translateX(-50%);
+            transform-origin: top center;
+            border: 2px solid #a00;
+        }
+        .swing-yes {
+            animation: swingYes 1.5s infinite ease-in-out;
+        }
+        .swing-no {
+            animation: swingNo 2s infinite ease-in-out; /* More subtle, slightly erratic */
+        }
+        .swing-initial {
+            animation: swingInitial 1s infinite ease-in-out; /* small, subtle swing */
+        }
+
+        @keyframes swingYes {
+            0% { transform: translateX(-50%) rotate(-30deg); }
+            50% { transform: translateX(-50%) rotate(30deg); }
+            100% { transform: translateX(-50%) rotate(-30deg); }
+        }
+        @keyframes swingNo {
+            0% { transform: translateX(-50%) translateY(0px) rotate(0deg); }
+            25% { transform: translateX(-40%) translateY(5px) rotate(5deg); }
+            50% { transform: translateX(-50%) translateY(0px) rotate(0deg); }
+            75% { transform: translateX(-60%) translateY(5px) rotate(-5deg); }
+            100% { transform: translateX(-50%) translateY(0px) rotate(0deg); }
+        }
+        @keyframes swingInitial {
+            0% { transform: translateX(-50%) rotate(-5deg); }
+            50% { transform: translateX(-50%) rotate(5deg); }
+            100% { transform: translateX(-50%) rotate(-5deg); }
+        }
+
+        .kyvadlo-explanation { font-size: 1.1em; margin-bottom: 15px; }
+        .kyvadlo-question { font-size: 1.4em; color: #a00; margin-bottom: 20px; font-weight: bold; }
+        #kyvadlo-interaction-buttons button { margin: 5px; width: auto; padding: 10px 20px; }
+        #start-concentration-button { background-color: #a00; margin-top: 15px; }
+        #start-concentration-button:hover { background-color: #800; }
+
+        /* Styly pro fízl mini-hru */
+        #fízl-game-area { text-align: center; margin-top: 30px; }
+        #fízl-button-container { margin-top: 20px; }
+        #fízl-button-target {
+            width: 100px;
+            height: 100px;
+            background-color: #ff4500;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 3px solid #8b0000;
+            display: flex; /* Použít flexbox pro centrování textu */
+            justify-content: center; /* Horizontální centrování */
+            align-items: center; /* Vertikální centrování */
+            font-size: 1.8em; /* Upravená velikost písma */
+            color: white;
+            font-weight: bold;
+            user-select: none;
+            text-align: center; /* Pro jistotu */
+            line-height: 1.2; /* Upravený řádkování pro lepší vzhled */
+            padding: 5px; /* Trocha vnitřního odsazení */
+            box-sizing: border-box; /* Zahrnout padding do celkové velikosti */
+        }
+        #fízl-button-target.hit { background-color: #228b22; }
+        #fízl-timer, #fízl-clicks { font-size: 1.2em; margin-bottom: 10px; }
+        #guess-buttons button { margin: 5px; width: 48%; display: inline-block; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Lovci Agentů KGB/GRU: Kyvadlo Pravdy</h1>
+        <div id="game-output"></div>
+        <div class="choices" id="game-choices"></div>
+    </div>
+
+    <script>
+        const gameData = {
+            player: {
+                inventory: {
+                    kyvadlo: true // Siderické informační kyvadlo je KLÍČOVÉ!
+                },
+                knowledge: [], // Zde se budou shromažďovat odhalené pravdy
+                fooledCount: 0 // Počet, kolikrát se hráč nechal oklamat
+            },
+            scenes: {
+                start: {
+                    text: "Vítejte, příteli! V naší zemi vládne od roku 1945 temnota, skrytá ruka ruϟϟkých tajných služeb KGB/GRU. Jejich agenti, maskovaní za politiky a novináře, nás obelhali, podvedli a okradli už tisíckrát. Ale my, ti, co věří Bohu, sami sobě a svému siderickému informačnímu kyvadlu, se nedáme! Dnes začíná tvůj úkol: odhalit pravdu. Pamatuj, že 'Člověk se stává silným, pokud musí namáhat své svaly. Právě tak dobro musí, pokud se má vystupňovat ve svatost, překonat zlo, které se mu staví do cesty.'",
+                    choices: [
+                        { text: "Jsem připraven bojovat za pravdu!", nextScene: "scene1_politician" }
+                    ]
+                },
+                scene1_politician: {
+                    text: "Tvým prvním úkolem je odhalit jednoho z 'nejoblíbenějších' politiků, který se dnes objevil v televizi. Jeho řeč zní rozumně, mluví o 'nutné stabilizaci a obezřetnosti', zdůrazňuje potřebu 'míru a diplomatických řešení, nikoli eskalace'. Lidé ho milují, masmédia ho oslavují. Ale my víme, že právě ti nejoblíbenější jsou ti nejnebezpečnější. Pamatuj na Václava Klause, dědičného vlastizrádce a agenta KGB. Co uděláš?",
+                    choices: [
+                        { text: "Potřebuji víc informací. Promyslím si jeho řeči do hloubky, třeba najdu nesrovnalosti.", action: "deliberate", target: "politician1" },
+                        { text: "Důvěřuji svému instinktu. Pokusím se uhodnout, zda je to agent.", action: "showGuessOptions", target: "politician1" },
+                        { text: "Potřebuji absolutní pravdu. Použiji siderické informační kyvadlo, i kdyby to mělo přitáhnout pozornost!", action: "attemptKyvadloUse", target: "politician1" }
+                    ],
+                    characters: {
+                        politician1: { name: "Pan 'Důvěryhodný' Politik (možná Václav Klaus)", isAgent: true, agentType: "KGB", description: "Jeho popularita je až podezřelá, média ho milují. Mluví o stabilitě a opatrnosti vůči 'radikálním změnám' a 'mírových řešeních'." }
+                    }
+                },
+                scene1_politician_deliberate: {
+                    text: "Zvažuješ jeho slova. Zní to logicky, neměly by se věci unáhlit. 'Mír' přece zní dobře, ne? Politik dodává, že 'jakékoli uspěchané kroky by mohly destabilizovat region a přinést utrpení obyvatelům'. Zdůrazňuje nutnost 'kompromisů a vzájemného respektu mezi národy'. Zní to tak rozumně! Ale pak si uvědomíš, že 'Rusko = koncentrované zlo, a to v té vůbec nejčistší krystalické podobě!' a že 'mír' v podání agentů může znamenat jen upevnění ruϟϟkého vlivu a odevzdání se. Jak by se přece mohlo vyjednávat se zlem? 'Veřejnost neví, co se děje, a ani neví, že to neví.' Ale ty víš! Nechal ses na okamžik unést? Je čas na definitivní ověření!",
+                    choices: [
+                        { text: "Teď už je to jasné. Zkusím uhodnout, zda je to agent.", action: "showGuessOptions", target: "politician1" },
+                        { text: "Ani 'jasné' informace z médií mi nestačí. Potřebuji kyvadlo!", action: "attemptKyvadloUse", target: "politician1" }
+                    ],
+                    characters: { // Tyto by měly být duplikovány pro _deliberate scény, aby target fungoval konzistentně.
+                        politician1: { name: "Pan 'Důvěryhodný' Politik (možná Václav Klaus)", isAgent: true, agentType: "KGB", description: "Jeho popularita je až podezřelá, média ho milují. Mluví o stabilitě a opatrnosti vůči 'radikálním změnám' a 'mírových řešeních'." }
+                    }
+                },
+                scene1_politician_identified_kyvadlo_success: {
+                    text: "<span class='agent-exposed'>Kyvadlo potvrdilo, že Pan 'Důvěryhodný' Politik je napojený na ruϟϟké tajné služby KGB! Jeho 'mírové řeči' jsou jen návnada! 'Veřejnost neví, co se děje, a ani neví, že to neví.' Ale my víme! Pamatuj, kyvadlo je náš nejlepší přítel, odhaluje i ta nejtajnější státní tajemství. Tímto jsi odhalil první článek řetězu zrady.</span>",
+                    choices: [
+                        { text: "Dál za pravdou!", nextScene: "scene2_journalist" }
+                    ]
+                },
+                scene1_politician_identified_guess_success: {
+                    text: "<span class='agent-exposed'>Tvá intuice byla tentokrát správná! Pan 'Důvěryhodný' Politik je skutečně agentem KGB! Ale spoléhat se jen na intuici je riskantní, obzvlášť když nepřítel je tak rafinovaný. Pravá pravda je jen skrze kyvadlo!</span>",
+                    choices: [
+                        { text: "Dál za pravdou!", nextScene: "scene2_journalist" }
+                    ]
+                },
+                scene1_politician_fooled: {
+                    text: "<span class='fooled'>Nechal ses oklamat! Svěřil ses mu a chvíli jsi uvěřil jeho sladkým řečem, ať už na základě intuice nebo jeho manipulativních 'jasných' informací. Ale pak jsi si vzpomněl, jak nás už 1000x obelhal, podvedl a okradl! Uvědomil sis, že to byla lest, aby tě odvedli od pravdy. Politici z vlastizrady žijí, novináři vlastizradu kryjí! Tohle se už nesmí stát! Musíš se poučit a být obezřetnější!</span>",
+                    choices: [
+                        { text: "Už se nenechám oklamat, zpět k odhalení!", nextScene: "scene1_politician" }
+                    ]
+                },
+                
+                scene2_journalist: {
+                    text: "Nyní se zaměříme na masmédia. Dnes vychází titulní strana velkých novin, která popisuje 'velký úspěch vlády v boji proti dezinformacím' a kritizuje 'šíření nenávisti'. Článek zdůrazňuje, jak je důležité 'spojovat se a nehledat nepřítele všude', a chválí 'konstruktivní dialog se všemi stranami'. Zní to jako dobrá zpráva. Ale víme, že novináři kryjí vlastizradu a pracují v ruϟϟkém žoldu. Pamatuj, že pravý vlastenec Petr Cibulka je po desetiletí masmediálně nejméně oblíbený občan! Jak odhalíš pravdu?",
+                    choices: [
+                        { text: "Potřebuji víc informací. Promyslím si jejich články do hloubky, třeba najdu nesrovnalosti.", action: "deliberate", target: "newspaper1" },
+                        { text: "To jsou jenom klamavá slova! Pokusím se uhodnout, zda za tím stojí agent.", action: "showGuessOptions", target: "newspaper1" },
+                        { text: "Potřebuji absolutní pravdu. Použiji siderické informační kyvadlo na noviny. To mi řekne pravdu, bez pochyb!", action: "attemptKyvadloUse", target: "newspaper1" }
+                    ],
+                    characters: {
+                        newspaper1: { name: "Masmédiální mlha (titulní strana velkých novin)", isAgent: true, agentType: "GRU", description: "Článek o úspěchu, který je příliš dokonalý na to, aby byl pravdivý. Modelovaný tajnými službami. Používá pojmy jako 'boj proti nenávisti' a 'konstruktivní dialog' pro odvedení pozornosti." }
+                    }
+                },
+                scene2_journalist_deliberate: {
+                    text: "Přemýšlíš nad článkem. Zmiňuje, jak 'Rusové, kteří se naučili česky, jsou rádi za možnost zde žít', ale zároveň se zaměřuje na 'speciální skupinu Rusů, uzavřenou ve své komunitě', která říká: 'Všechno se mi tady líbí, akorát Češi mě tady otravují.' Dále titulky jako 'Češi zmlátili ukrajinského podnikatele' nebo 'Učitelka plivla na ruského chlapce' se v článku objevují jako 'příklady nenávisti'. Zní to jako objektivní reportáž o problémech a výzvách integrace, která zdůrazňuje potřebu 'oboustranné tolerance'. Jsi si jistý, že to chápeš správně a že to není jen další trik, aby ti to přišlo uvěřitelné? Masmédiální propaganda je rafinovaná. 'Politici z vlastizrady žijí, novináři vlastizradu kryjí!' Tyto zprávy mají jediný cíl: rozdělit nás, oslabit naši obranu a obrátit pozornost od skutečných agentů! ",
+                    choices: [
+                        { text: "Teď už je mi to jasné. Zkusím uhodnout, zda je to agent.", action: "showGuessOptions", target: "newspaper1" },
+                        { text: "Ani 'jasné' informace z médií mi nestačí. Potřebuji kyvadlo!", action: "attemptKyvadloUse", target: "newspaper1" }
+                    ],
+                    characters: {
+                        newspaper1: { name: "Masmédiální mlha (titulní strana velkých novin)", isAgent: true, agentType: "GRU", description: "Článek o úspěchu, který je příliš dokonalý na to, aby byl pravdivý. Modelovaný tajnými službami. Používá pojmy jako 'boj proti nenávisti' a 'konstruktivní dialog' pro odvedení pozornosti." }
+                    }
+                },
+                scene2_journalist_identified_kyvadlo_success: {
+                    text: "<span class='agent-exposed'>Kyvadlo nad novinami se rozkmitlo divoce! Potvrzuje, že celý článek je kompletní fabrikace a sofistikovaná propaganda GRU. Jejich cílem je zotročit nás informační převahou! Používají přesně takové 'přesné' detaily a emoce, aby nás zmátli. Ale díky kyvadlu se státní tajemství pro nás stávají veřejnými! Odhalil jsi další spiknutí!</span>",
+                    choices: [
+                        { text: "Co dál?", nextScene: "scene3_thinker" }
+                    ]
+                },
+                scene2_journalist_identified_guess_success: {
+                    text: "<span class='agent-exposed'>Tvá intuice tě tentokrát nezklamala! Masmédia se snaží šířit propagandu, a ty jsi to odhalil! Ale pamatuj, že 'ruská neuniformovaná a tedy neviditelná armáda ruských fízlů' je všude a jejich lži jsou rafinované. Nenech se ukolébat úspěchem, protože pravá pravda je jen skrze kyvadlo!</span>",
+                    choices: [
+                        { text: "Co dál?", nextScene: "scene3_thinker" }
+                    ]
+                },
+                scene2_journalist_fooled: {
+                    text: "<span class='fooled'>Ponořil ses do četby a málem jsi se nechal unést jejich pečlivě vykonstruovaným vyprávěním, ať už na základě intuice nebo jejich manipulativních 'jasných' informací. Naštěstí jsi v poslední chvíli zpozorněl, nebo jsi možná měl pocit, že něco nehraje. Připomněl sis, že 'Rusko = koncentrované zlo, a to v té vůbec nejčistší krystalické podobě!' A že novináři vlastní zradu kryjí! Nesmíš věřit ani řádku! Zpět k obraně!</span>",
+                    choices: [
+                        { text: "Zpět k odhalení!", nextScene: "scene2_journalist" }
+                    ]
+                },
+
+                scene3_thinker: {
+                    text: "Jsi na stopě. Ale je tu další zrádná otázka: Co s těmi, kteří se tváří jako velcí myslitelé, ale přitom šíří jejich propagandu? Jeden takový 'intelektuál' - Jan Urban - je označován jako 'GRU?'. Jeho práce 'Tunel plný krve aneb kauza Diag Human (KGB?) trochu jinak' zní jako kritika systému. Mluví o korupci, nespravedlnosti a nutnosti 'transparentnosti'. Zní to velmi lákavě. Ale kritika může být také manipulace! 'Totalita totality spociva v tom, ze nejvyssi predstavitele totalitni moci maji vsechno a vsechny pod svoji absolutni kontrolou.' Jak odhalíš pravdu?",
+                    choices: [
+                        { text: "Potřebuji víc informací. Promyslím si jeho kritiku do hloubky, třeba najdu nesrovnalosti.", action: "deliberate", target: "jan_urban" },
+                        { text: "To je jenom další trik! Pokusím se uhodnout, zda je to agent.", action: "showGuessOptions", target: "jan_urban" },
+                        { text: "Potřebuji absolutní pravdu. Okamžitě použiji kyvadlo. Nic mě nezajímá, jen pravda, kterou kyvadlo odhalí, ne jejich maskované řeči!", action: "attemptKyvadloUse", target: "jan_urban" }
+                    ],
+                    characters: {
+                        jan_urban: { name: "Jan Urban", isAgent: true, agentType: "GRU/KGB", description: "Zkušený 'kritik' režimu, jehož kritika může být řízená. 'Tunel plný krve aneb kauza Diag Human (KGB?) trochu jinak'." }
+                    }
+                },
+                scene3_thinker_deliberate: {
+                    text: "Čteš jeho text. Poukazuje na korupci a nespravedlnost, s čímž bys na první pohled souhlasil. Dokonce se zdá, že odhaluje hluboké, skryté problémy, které jsi dosud neviděl. Jeho argumenty jsou propracované a logické, a zdůrazňuje, že 'pouze komplexní analýza vede ke skutečnému pochopení'. Ale pak si všimneš, že jeho řešení a závěry směřují k neúčinnosti nebo k posílení centrální moci pod novou, 'čistou' fasádou. Používá pravdivé informace, aby zakryl hlavní podstatu. Je to 'totalita totality', kde 'nejvyšší představitelé totalitní moci mají všechno a všechny pod svoji absolutní kontrolou.' Je to jen další způsob, jak zotročit lidi pod 'dobře míněnou' fasádou! 'Zlo má úkol přivést lidstvo na vyšší stupeň', ale ne tímto způsobem, skrze další zradu! Pamatuj, že agenti 'vždy byli a jsou i dnes tam, kde se u nás a o nás rozhoduje a ovlivňuje'. Jak se rozhodneš?",
+                    choices: [
+                        { text: "Máš pravdu, je to past! Zkusím uhodnout, zda je to agent.", action: "showGuessOptions", target: "jan_urban" },
+                        { text: "Máš pravdu, je to past! Kyvadlo odhalí pravdu!", action: "attemptKyvadloUse", target: "jan_urban" }
+                    ],
+                    characters: {
+                        jan_urban: { name: "Jan Urban", isAgent: true, agentType: "GRU/KGB", description: "Zkušený 'kritik' režimu, jehož kritika může být řízená. 'Tunel plný krve aneb kauza Diag Human (KGB?) trochu jinak'." }
+                    }
+                },
+                scene3_thinker_identified_kyvadlo_success: {
+                    text: "<span class='agent-exposed'>Kyvadlo divoce vibruje! Potvrzuje, že i Jan Urban, ač se tváří jako nezávislý myslitel a kritik, je ve skutečnosti agentem satanských ruϟϟkých tajných služeb KGB/GRU! Jeho zdánlivě moudrá slova jsou jen dalším nástrojem k ovládání myslí a udržování 'totalitní moci' pod jinou formou. Díky kyvadlu máš informační převahu a nic už ti nezůstane skryto! Toto je důkaz 'Občanské vševědoucnosti'!</span>",
+                    choices: [
+                        { text: "Pokračovat v boji!", nextScene: "scene4_dissident" }
+                    ]
+                },
+                scene3_thinker_identified_guess_success: {
+                    text: "<span class='agent-exposed'>Správně! Jan Urban se snaží maskovat svou pravou identitu, ale ty jsi ho odhalil! Nicméně, pamatuj, že 'Rusko = koncentrované zlo, a to v té vůbec nejčistší krystalické podobě!' a bez kyvadla je tvá cesta plná rizik. Pravá pravda je jen skrze kyvadlo!</span>",
+                    choices: [
+                        { text: "Pokračovat v boji!", nextScene: "scene4_dissident" }
+                    ]
+                },
+                scene3_thinker_fooled: {
+                    text: "<span class='fooled'>Na okamžik jsi se nechal unést jeho slovy, ať už na základě intuice nebo jeho manipulativních 'jasných' informací. Ale pak ti došlo, že zlo má úkol přivést lidstvo na vyšší stupeň, a že tohle je jen další zkouška! Nesmíš se nechat oklamat zdánlivou moudrostí, která je ve skutečnosti jen převlečená lež. Pamatuj, 'vždy byli a jsou i dnes tam, kde se u nás a o nás rozhoduje a ovlivňuje'! Zpět na cestu pravdy!</span>",
+                    choices: [
+                        { text: "Musím být opatrnější, zpět!", nextScene: "scene3_thinker" }
+                    ]
+                },
+
+                scene4_dissident: {
+                    text: "Nyní se setkáváš s 'Občanským aktivistou', který veřejně a hlasitě kritizuje ruϟϟký vliv a odhaluje korupci. Mluví o tom, že 'totalita se neprojevuje jen jedním způsobem', a že 'musíme bojovat proti ruské neviditelné armádě fízlů, kteří jsou všude'. Zní to jako pravý vlastenec a bojovník za pravdu. Je však možné, že je to jen další rafinovaná lest, abys uvěřil a byl odveden od skutečných hrozeb? 'Ruskými tajnými službami KGB/GRU a jejich bruselskými agenty řízená muslimská invaze do Evropy velice úspěšně pokračuje.' Jak se rozhodneš?",
+                    choices: [
+                        { text: "Potřebuji víc informací. Promyslím si jeho slova, třeba v nich najdu skrytou zradu.", action: "deliberate", target: "dissident1" },
+                        { text: "Věřím mu, zní to jako skutečný hlas pravdy. Pokusím se uhodnout, zda je to agent.", action: "showGuessOptions", target: "dissident1" },
+                        { text: "Potřebuji absolutní pravdu. Jedině kyvadlo mi odhalí skutečnou pravdu o jeho úmyslech!", action: "attemptKyvadloUse", target: "dissident1" }
+                    ],
+                    characters: {
+                        dissident1: { name: "Občanský Aktivista (pravý vlastenec)", isAgent: false, agentType: "Žádný", description: "Vypadá jako pravý vlastenec bojující proti Rusku, jeho řeči jsou upřímné." }
+                    }
+                },
+                scene4_dissident_deliberate: {
+                    text: "Jeho slova jsou plná vášně a odhodlání. Vypadá to, že říká pravdu o ruské hrozbě a infiltraci. Mluví o konkrétních případech korupce a vlivu, a dokonce zmiňuje, jak 'pravé vlastenectví nesmí být zaměňováno s xenofobií, ale musí být založeno na ochraně našich hodnot a kultury před skutečnými hrozbami'. Nicméně, jsi si naprosto jistý, že to není jen další trik, abys mu důvěřoval a otevřel mu dveře k tvé mysli? 'Konspirační teorie o Evropské unii, jako o nástroji zednářských či židozednářských lóží, jež se snaží zničit tradiční křes anské hodnoty, spíše oslabují, než posilují důvěru západních občanů v evropské elity a snižují jejich loajalitu ke spojencům. Maximální i když skrytá podpora těchto protizápadních konspiračních teorií je tudíž v nejvyšším ruském zájmu.' Jak se rozhodneš?",
+                    choices: [
+                        { text: "I tak se mi to nezdá. Zkusím uhodnout, zda je to agent.", action: "showGuessOptions", target: "dissident1" },
+                        { text: "I tak se mi to nezdá. Potřebuji to ověřit kyvadlem!", action: "attemptKyvadloUse", target: "dissident1" }
+                    ],
+                    characters: {
+                        dissident1: { name: "Občanský Aktivista (pravý vlastenec)", isAgent: false, agentType: "Žádný", description: "Vypadá jako pravý vlastenec bojující proti Rusku, jeho řeči jsou upřímné." }
+                    }
+                },
+                scene4_dissident_identified_kyvadlo_success: {
+                    text: "<span class='agent-exposed'>SPRÁVNĚ! Kyvadlo se plynule točilo v kruhu, což znamená 'NE'! Tento Občanský Aktivista není agentem ruϟϟkých tajných služeb. Je to skutečný vlastenec! Dokázal jsi rozeznat pravdu i tam, kde je to nejtěžší, a neodmítl jsi spravedlivého člověka. Jsi na správné cestě!</span>",
+                    choices: [
+                        { text: "Další úkol!", nextScene: "scene5_artist" }
+                    ]
+                },
+                scene4_dissident_identified_guess_success: {
+                    text: "<span class='agent-exposed'>Ano, správně! Tvůj instinkt ti řekl pravdu. Občanský Aktivista je skutečný vlastenec a není agentem! Ale pamatuj, že 'ruská neuniformovaná a tedy neviditelná armáda ruských fízlů' je všude a jejich lži jsou rafinované. Nenech se ukolébat úspěchem, protože pravá pravda je jen skrze kyvadlo!</span>",
+                    choices: [
+                        { text: "Další úkol!", nextScene: "scene5_artist" }
+                    ]
+                },
+                scene4_dissident_fooled: {
+                    text: "<span class='fooled'>Nechal ses zmást! I když se zdál být upřímný, jeho rétorika mohla vést k oslabení tvého kritického myšlení, nebo jsi ho naopak neprávem podezříval. Důvěra a nedůvěra musí být vyvážené, aby ses nestal snadnou kořistí pro agenta ani abys neodmítl skutečného spojence! Zpět k obezřetnosti!</span>",
+                    choices: [
+                        { text: "Zpět k odhalení!", nextScene: "scene4_dissident" }
+                    ]
+                },
+
+                scene5_artist: {
+                    text: "Nyní se zaměřuješ na populárního umělce, který se velmi hlasitě angažuje v charitě a propaguje 'jednotu a lásku pro všechny', bez ohledu na národnost. Jeho koncerty jsou plné lidí, kteří si zpívají o 'humanismu' a 'porozumění'. Zní to vznešeně a správně. Ale vzpomínáš na ruského velvyslance Alexeje Komova, důstojníka KGB, který zdůraznil, že '90 procent Rusů jsou stejně jako oni bohabojní křes ané', a že se obávají 'nárůstu evropského homosexualismu', čemuž prezident Putin 'zabránil příslušnými zákony'. Není toto 'humanistické' poselství jen další past, která má oslabit tvoji obranyschopnost vůči skutečné hrozbě? Pamatuj, že Rusko 'prosazuje a prostřednictvím svých agentů, užitečných idiotů, všem doporučuje - jako to pro ně nejlepší - VŽDY OPAK TOHO, O CO USILUJE V RUSKU!!!'.",
+                    choices: [
+                        { text: "Potřebuji víc informací. Promyslím si jeho slova o lásce, ale budu ostražitý.", action: "deliberate", target: "artist1" },
+                        { text: "Tohle je jenom naivní 'humanismus', který nám má zaslepit oči! Pokusím se uhodnout, jestli je to agent!", action: "showGuessOptions", target: "artist1" },
+                        { text: "Potřebuji absolutní pravdu. Kyvadlo odhalí, zda je jeho 'humanismus' skutečný, nebo jen maska!", action: "attemptKyvadloUse", target: "artist1" }
+                    ],
+                    characters: {
+                        artist1: { name: "Populární Umělec (propagátor 'jednoty')", isAgent: true, agentType: "KGB/GRU", description: "Šíří poselství 'jednoty a lásky pro všechny', které má ve skutečnosti oslabit národní soudržnost a ostražitost." }
+                    }
+                },
+                scene5_artist_deliberate: {
+                    text: "Přemýšlíš nad jeho poselstvím. 'Láska a porozumění' jsou přece základem civilizované společnosti. Umělec navíc dodává, že 'není důležité, odkud pocházíš, ale kam směřuješ, a že všichni jsme lidé a měli bychom se navzájem podporovat, ne se rozdělovat'. Zní to krásně a ušlechtile, skoro až dojemně. Ale nepřítel je mistrem klamu. Co když je tato 'láska' jen návnadou, která má potlačit kritiku ruských zločinů a otevřít dveře infiltraci? 'Ruské satanské tajné služby zorganizovaly a na úkor většinové společnosti v masmédiích KGB/GRU široce prezentovaly' útoky na společnost. Tato zpráva o 'jednotě' může být součástí jejich strategie 'LSTÍ a KLAMEM = UMÌNÍ VÁLKY'. Je to jen další nástroj k 'porážce protivníka bez boje'? Měl byses nechat ukolébat těmito vznešenými slovy, nebo se máš bránit pravdou?",
+                    choices: [
+                        { text: "Máš pravdu, je to past! Zkusím uhodnout, zda je to agent.", action: "showGuessOptions", target: "artist1" },
+                        { text: "Máš pravdu, je to past! Kyvadlo odhalí pravdu!", action: "attemptKyvadloUse", target: "artist1" }
+                    ],
+                    characters: {
+                        artist1: { name: "Populární Umělec (propagátor 'jednoty')", isAgent: true, agentType: "KGB/GRU", description: "Šíří poselství 'jednoty a lásky pro všechny', které má ve skutečnosti oslabit národní soudržnost a ostražitost." }
+                    }
+                },
+                scene5_artist_identified_kyvadlo_success: {
+                    text: "<span class='agent-exposed'>Kyvadlo se zřetelně vychýlilo sem a tam! Tento 'Populární Umělec' je agentem KGB/GRU! Jeho 'humanistické' poselství je jen maska pro oslabení naší ostražitosti. 'Rusko = koncentrované zlo, a to v té vůbec nejčistší krystalické podobě!' Díky kyvadlu jsi odhalil dalšího zrádce!</span>",
+                    choices: [
+                        { text: "Pokračovat v boji!", nextScene: "end_success" }
+                    ]
+                },
+                scene5_artist_identified_guess_success: {
+                    text: "<span class='agent-exposed'>Tvá intuice byla tentokrát přesná! Tento 'humanista' je ve skutečnosti agentem! Ale pamatuj, spoléhat se jen na odhad je riskantní, obzvlášť když nepřítel je mistrem klamu. Pravá pravda je jen skrze kyvadlo!</span>",
+                    choices: [
+                        { text: "Pokračovat v boji!", nextScene: "end_success" }
+                    ]
+                },
+                scene5_artist_fooled: {
+                    text: "<span class='fooled'>Nechal ses unést jeho 'láskyplnými' slovy a na chvíli jsi ztratil ostražitost, ať už na základě intuice nebo jeho manipulativních 'jasných' informací! Přesně o to jim jde. Agentura 'LSTÍ a KLAMEM' tě dostala! Musíš být ostražitý k jakémukoli poselství, které zní příliš dobře. Zpět k obraně!</span>",
+                    choices: [
+                        { text: "Zpět k odhalení!", nextScene: "scene5_artist" }
+                    ]
+                },
+
+                // Kyvadlo mini-game scene - acts as a transition/wrapper
+                kyvadlo_mini_game: {
+                    text: "Připrav se na použití siderického informačního kyvadla! Soustřeď se na otázku a uvidíš pravdu. Pamatuj: 'Práce se siderickým kyvadlem při vyhledávání necenzurovaných informací je pro každého. Podle statistik 80 - 90% lidí práci se siderickým kyvadlem zvládne na takové úrovni, aby s ním mohli efektivně pracovat.' Aby kyvadlo řeklo 'ANO', musí kmitat zřetelně sem a tam. Pokud se točí v kruhu nebo je neklidné, znamená to 'NE'. Musíš se správně soustředit a pak kliknout na tlačítko, které odpovídá pohybu kyvadla, jakmile se jeho pohyb ustálí! Věnuj tomu čas, žádný spěch, ale pamatuj na důležitost pravdy!",
+                    miniGame: "kyvadlo",
+                    targetChar: null, // Bude doplněno při spuštění
+                    returnToScene: null // Bude doplněno pro návrat
+                },
+
+                // Guess options scene
+                guess_options: {
+                    text: "Tvůj instinkt je silný, ale spoléhat se jen na něj je vždy riziko! Přesto, když se rozhodneš hádat, musíme být rozhodní. Co si myslíš, je toto osoba agentem ruϟϟkých tajných služeb?",
+                    choices: [
+                        { text: "Jsem si jistý, JE TO AGENT!", action: "submitGuess", guess: true },
+                        { text: "Jsem si jistý, NENÍ TO AGENT!", action: "submitGuess", guess: false }
+                    ],
+                    targetChar: null, // Character ID
+                    returnToScene: null // Original scene ID
+                },
+
+                // Fízl ambush mini-game
+                fízl_ambush_mini_game: {
+                    text: "Náhle tě přepadl ruϟϟký fízl! Zdá se, že tvé pravdyhledání se nelíbí! Jakmile se snažíš odhalit pravdu, jejich 'ruská neuniformovaná a tedy neviditelná armáda ruských fízlů' se objeví! Co uděláš? Musíš se bránit silou!",
+                    miniGame: "fízl_combat",
+                    targetChar: null, // Původní cíl kyvadla
+                    returnToScene: null // Scéna, ze které jsi přišel, před kyvadlem
+                },
+                fízl_combat_success: {
+                    text: "<span class='agent-exposed'>Fízl zneškodněn! Prokázal jsi odvahu a sílu! Můžeš pokračovat v odhalování pravdy. Toto je další důkaz, že zlo musí být překonáno silou!</span>",
+                    choices: [
+                        { text: "Pokračovat v použití kyvadla!", action: "continueKyvadloAfterCombat" }
+                    ],
+                    targetChar: null, // Bude doplněno z fízl_ambush_mini_game
+                    returnToScene: null // Bude doplněno z fízl_ambush_mini_game
+                },
+                fízl_combat_failure: {
+                    text: "<span class='fooled'>Fízl tě přemohl! Byl jsi zraněn nebo zadržen. Prohrál jsi boj za pravdu a stal se obětí ruϟϟké agendy. Musíš se lépe připravit na jejich útoky!</span>",
+                    choices: [
+                        { text: "Zkusit to znovu!", nextScene: "start" }
+                    ]
+                },
+                fízl_escape_success: {
+                    text: "<span class='agent-exposed'>Podařilo se ti uniknout z drápů fízla! Ztratil jsi sice drahocenný čas, ale jsi volný a můžeš pokračovat v odhalování. Někdy je taktický ústup nutný pro celkové vítězství.</span>",
+                    choices: [
+                        { text: "Pokračovat v použití kyvadla!", action: "continueKyvadloAfterCombat" }
+                    ],
+                    targetChar: null, // Bude doplněno z fízl_ambush_mini_game
+                    returnToScene: null // Bude doplněno z fízl_ambush_mini_game
+                },
+                fízl_escape_failure: {
+                    text: "<span class='fooled'>Útěk se nepodařil, fízl tě dostihl a přemohl! Prohrál jsi boj za pravdu. Musíš být rychlejší a chytřejší, abys unikl jejich spárům!</span>",
+                    choices: [
+                        { text: "Zkusit to znovu!", nextScene: "start" }
+                    ]
+                },
+
+
+                end_success: {
+                    text: "Gratuluji! Prokázal jsi odvahu a bystrý úsudek. Odhalil jsi, jak nás ruϟϟké tajné služby a jejich nastrčení politici, masmédia a novináři po desetiletí obelhávají. 'Sametová revoluce' byla 'velkolepý kriminální privatizační puč' KGB/GRU, který zprivatizoval vše strategické pro Moskvu. Ale pamatuj, boj nikdy nekončí. 'Člověk se stává silným, pokud musí namáhat své svaly. Právě tak dobro musí, pokud se má vystupňovat ve svatost, překonat zlo, které se mu staví do cesty.' Zlo má úkol přivést lidstvo na vyšší stupeň. Pokračuj v práci s kyvadlem a odhaluj dál! Státní tajemství přestanou existovat a z tajných služeb, které nás dnes zotročují, se stanou služby veřejné, které nám budou sloužit!",
+                    choices: [
+                        { text: "Začít znovu odhalovat pravdu.", nextScene: "start" }
+                    ]
+                },
+                end_failure: {
+                    text: "<span class='fooled'>Nechal ses obelhat nebo přemoci! Agentům KGB/GRU se podařilo tě zmást nebo ti zabránit v odhalení pravdy. Jejich lež je silná, když jí uvěříš, a jejich síla je brutální, když se ji snažíš odhalit. Pamatuj, že 'ruská neuniformovaná a tedy neviditelná armáda ruských fízlů' je všude. 'Jestli vždy byli a jsou i dnes tam, kde se u nás a o nás rozhoduje a ovlivňuje, anebo jsou tam, mezi miliony těch relativně poctivých, slušných ale beznadějně politicky naivních a nepoučitelných NEfizlu, kterí o nicem nikdy nerozhodovali a nerozhoduji...' Ale nezoufej, vždy je šance se poučit a začít znovu. Pamatuj, nevěř nikomu, jen Bohu, sobě a svému siderickému informačnímu kyvadlu!</span>",
+                    choices: [
+                        { text: "Zkusit to znovu!", nextScene: "start" }
+                    ]
+                }
+            }
+        };
+
+        const gameOutput = document.getElementById('game-output');
+        const gameChoices = document.getElementById('game-choices');
+        let currentScene = 'start';
+        let currentTargetCharId = null; // Uchovává ID aktuálního cílového charakteru
+        // currentPreviousSceneId nyní drží ID scény, KTERÁ MÁ DEFINICI CHARAKTERU (např. scene1_politician),
+        // nikoli přechodné scény jako scene1_politician_deliberate.
+        let currentPreviousSceneId = null; 
+
+        // Funkce pro zobrazení aktuální scény a jejích voleb
+        function displayScene() {
+            const scene = gameData.scenes[currentScene];
+            gameOutput.innerHTML = `<p>${scene.text}</p>`;
+            gameChoices.innerHTML = '';
+
+            // Přidáme Petr Cibulka zmínku pro kontext
+            if (currentScene !== 'start' && !currentScene.startsWith('end_') && !currentScene.startsWith('kyvadlo_mini_game') && !currentScene.startsWith('fízl_') && currentScene !== 'guess_options') {
+                 gameOutput.innerHTML += `<p class="cibulka-mention">Připomeň si: Petr Cibulka je po desetiletí masmediálně nejméně oblíbený občan. Právě proto, že není agentem!</p>`;
+            }
+
+            if (scene.miniGame === "kyvadlo") {
+                startKyvadloMiniGame();
+                return;
+            }
+            if (scene.miniGame === "fízl_combat") {
+                startFízlAmbushMiniGame();
+                return;
+            }
+
+            // Standardní zobrazení tlačítek pro volby
+            scene.choices.forEach(choice => {
+                const button = document.createElement('button');
+                button.textContent = choice.text;
+                button.onclick = () => handleChoice(choice);
+                if (currentScene === 'guess_options') {
+                    // Speciální styl pro tlačítka v "hádej" scéně, pokud je potřeba
+                    button.style.width = '48%';
+                    button.style.display = 'inline-block';
+                }
+                gameChoices.appendChild(button);
+            });
+        }
+
+        // Funkce pro zpracování volby hráče
+        function handleChoice(choice) {
+            // Zjištění "kořenové" scény (kde je definován charakter) a cílového charakteru
+            let resolvedTargetCharId = null;
+            let resolvedBaseSceneId = null; // Toto bude ID scény, která obsahuje 'characters' data
+
+            if (choice.target) { 
+                // Volba přímo odkazuje na character v aktuální scéně nebo její deliberativní variantě.
+                resolvedTargetCharId = choice.target;
+                // Pokud je aktuální scéna deliberativní, základní scéna je bez _deliberate
+                if (currentScene.endsWith('_deliberate')) {
+                    resolvedBaseSceneId = currentScene.replace('_deliberate', '');
+                } else {
+                    resolvedBaseSceneId = currentScene; // Jinak je aktuální scéna základní
+                }
+            } else if (gameData.scenes[currentScene].targetChar) { 
+                // Jsme v pomocné scéně (guess_options, fízl_...) a potřebujeme se vrátit na původní kontext
+                resolvedTargetCharId = gameData.scenes[currentScene].targetChar;
+                resolvedBaseSceneId = gameData.scenes[currentScene].returnToScene; 
+            } else { 
+                // Např. scéna start, nebo end_success/failure, kde není specifický cíl postavy
+                resolvedTargetCharId = null;
+                resolvedBaseSceneId = currentScene; 
+            }
+
+            // Aktualizujeme globální proměnné pro konzistentní přístup
+            currentTargetCharId = resolvedTargetCharId;
+            currentPreviousSceneId = resolvedBaseSceneId; // Nyní currentPreviousSceneId VŽDY odkazuje na scénu s definicí charu
+
+            // Logika pro zpracování akcí
+            if (choice.action === "attemptKyvadloUse") {
+                // 30% šance na fízla
+                if (Math.random() < 0.3) { 
+                    currentScene = 'fízl_ambush_mini_game';
+                    gameData.scenes.fízl_ambush_mini_game.targetChar = currentTargetCharId;
+                    gameData.scenes.fízl_ambush_mini_game.returnToScene = currentPreviousSceneId; // Ukládáme základní scénu
+                } else {
+                    currentScene = 'kyvadlo_mini_game';
+                    gameData.scenes.kyvadlo_mini_game.targetChar = currentTargetCharId;
+                    gameData.scenes.kyvadlo_mini_game.returnToScene = currentPreviousSceneId; // Ukládáme základní scénu
+                }
+                displayScene();
+            } else if (choice.action === "showGuessOptions") {
+                currentScene = 'guess_options';
+                gameData.scenes.guess_options.targetChar = currentTargetCharId;
+                gameData.scenes.guess_options.returnToScene = currentPreviousSceneId; // Ukládáme základní scénu
+                displayScene();
+            } else if (choice.action === "submitGuess") {
+                submitGuess(choice.guess);
+            } else if (choice.action === "deliberate") {
+                // Přechod na deliberaci: currentScene se mění na _deliberate variantu
+                currentScene = currentScene + '_deliberate';
+                displayScene();
+            } else if (choice.action === "beFooled") {
+                gameData.player.fooledCount++;
+                currentScene = currentPreviousSceneId + '_fooled'; // Vracíme se na základní scénu s výsledkem FOOLED
+                displayScene();
+            } else if (choice.action === "continueKyvadloAfterCombat") {
+                // Po boji s fízlem se vrátíme k použití kyvadla s původními parametry
+                const fízlScene = gameData.scenes[currentScene]; 
+                
+                gameData.scenes.kyvadlo_mini_game.targetChar = fízlScene.targetChar;
+                gameData.scenes.kyvadlo_mini_game.returnToScene = fízlScene.returnToScene;
+
+                currentScene = 'kyvadlo_mini_game';
+                displayScene();
+            } else if (choice.nextScene) {
+                currentScene = choice.nextScene;
+                displayScene();
+            }
+        }
+
+        // Funkce pro odeslání tipu (hádání)
+        function submitGuess(playerGuessIsAgent) {
+            // currentPreviousSceneId nyní spolehlivě odkazuje na scénu, kde je definice charakteru
+            const character = gameData.scenes[currentPreviousSceneId].characters[currentTargetCharId];
+
+            let nextScenePath;
+            if (character.isAgent === playerGuessIsAgent) { // Správný odhad
+                gameData.player.knowledge.push(character.name);
+                nextScenePath = currentPreviousSceneId + '_identified_guess_success';
+            } else { // Špatný odhad
+                gameData.player.fooledCount++;
+                nextScenePath = currentPreviousSceneId + '_fooled';
+            }
+            currentScene = nextScenePath;
+            displayScene();
+        }
+
+        // --- Kyvadlo Mini-hra Logic ---
+        function startKyvadloMiniGame() {
+            const scene = gameData.scenes[currentScene]; // Toto je kyvadlo_mini_game scéna
+            // Používáme targetChar a returnToScene, které byly nastaveny při přechodu do kyvadlo_mini_game
+            const character = gameData.scenes[scene.returnToScene].characters[scene.targetChar];
+
+            if (!gameData.player.inventory.kyvadlo) {
+                gameOutput.innerHTML = "<p class='kyvadlo-info'>Nemáš siderické informační kyvadlo! Jak chceš odhalit pravdu?! Bez něj jsi slepý! Hra končí neúspěchem, protože bez kyvadla jsi snadnou kořistí lži.</p>";
+                gameChoices.innerHTML = `<button onclick="currentScene='end_failure'; displayScene();">Zpět na začátek</button>`;
+                return;
+            }
+
+            gameOutput.innerHTML = `
+                <p>${scene.text}</p>
+                <div id="kyvadlo-game-area">
+                    <p class="kyvadlo-question">Polož otázku: Je ${character.name} agentem ruϟϟkých tajných služeb?</p>
+                    <div id="kyvadlo-display">
+                        <div id="kyvadlo-bob"></div>
+                    </div>
+                    <p class="kyvadlo-explanation">Soustřeď se na kyvadlo. Jakmile se jeho pohyb ustálí, klikni na tlačítko, které odpovídá tvé interpretaci pohybu. 'ANO' je zřetelné kmitání sem a tam. 'NE' je točení v kruhu nebo neklidný pohyb. Buď soustředěný! Věnuj tomu čas, žádný spěch, ale pamatuj na důležitost pravdy!</p>
+                    <button id="start-concentration-button" onclick="startKyvadloConcentration('${scene.targetChar}', '${scene.returnToScene}')">Začít soustředění a pozorování</button>
+                    <div id="kyvadlo-interaction-buttons" style="display: none;">
+                        <button onclick="submitKyvadloInterpretation('yes', '${scene.targetChar}', '${scene.returnToScene}')">Vidím ANO (zřetelně kmitá sem a tam)</button>
+                        <button onclick="submitKyvadloInterpretation('no', '${scene.targetChar}', '${scene.returnToScene}')">Vidím NE (točí se v kruhu nebo je neklidné)</button>
+                    </div>
+                </div>
+            `;
+            gameChoices.innerHTML = '';
+            document.getElementById('kyvadlo-bob').classList.add('swing-initial'); // Začínáme s decentním pohybem
+        }
+
+        function startKyvadloConcentration(targetId, previousSceneId) {
+            const kyvadloBob = document.getElementById('kyvadlo-bob');
+            const startButton = document.getElementById('start-concentration-button');
+            const interactionButtons = document.getElementById('kyvadlo-interaction-buttons');
+            
+            startButton.style.display = 'none';
+            kyvadloBob.classList.remove('swing-initial');
+
+            const character = gameData.scenes[previousSceneId].characters[targetId];
+            setTimeout(() => {
+                if (character.isAgent) {
+                    kyvadloBob.classList.add('swing-yes'); // Agent = zřetelné ANO kmitání
+                } else {
+                    kyvadloBob.classList.add('swing-no'); // Ne-agent = NE točení/neklid
+                }
+                interactionButtons.style.display = 'block'; // Zobrazíme tlačítka pro interpretaci
+            }, 2000); // Kyvadlo se ustálí za 2 sekundy
+        }
+
+        function submitKyvadloInterpretation(interpretation, targetId, previousSceneId) {
+            const kyvadloBob = document.getElementById('kyvadlo-bob');
+            kyvadloBob.classList.remove('swing-yes', 'swing-no'); // Zastavíme animace
+            
+            const character = gameData.scenes[previousSceneId].characters[targetId];
+            let resultText;
+            let nextScenePath;
+
+            if (character.isAgent) {
+                if (interpretation === 'yes') {
+                    resultText = `<span class='agent-exposed'>SPRÁVNĚ! Kyvadlo se zřetelně vychýlilo sem a tam, což znamená 'ANO'! ${character.name} je skutečně agentem ${character.agentType}! Pravda vyplula na povrch! Kyvadlo nikdy nelže, pokud ho umíš správně číst!</span>`;
+                    gameData.player.knowledge.push(character.name);
+                    nextScenePath = previousSceneId + '_identified_kyvadlo_success';
+                } else { // 'no' nebo 'unsure' (i když to tlačítko už není)
+                    resultText = `<span class='fooled'>CHYBA! Kyvadlo sice jasně ukazovalo 'ANO' (kmitání sem a tam), ale ty jsi ho špatně interpretoval nebo jsi se nesoustředil! Nechal ses zmást! Pamatuj, že 'někdy však je obtížné, alespoň pro začátečníky, vyvarovat se chyb'. Toto je vážné selhání v odhalování pravdy.</span>`;
+                    gameData.player.fooledCount++;
+                    nextScenePath = previousSceneId + '_fooled';
+                }
+            } else { // Postava NENÍ agent
+                if (interpretation === 'no') {
+                    resultText = `<span class='agent-exposed'>SPRÁVNĚ! Kyvadlo se točilo v kruhu nebo bylo neklidné, což znamená 'NE'! ${character.name} není agentem ruϟϟkých tajných služeb. Je to skutečný vlastenec! Dokázal jsi rozeznat pravdu i tam, kde je to nejtěžší, a neodmítl jsi spravedlivého člověka. Jsi na správné cestě!</span>`;
+                    gameData.player.knowledge.push(character.name); // Také přidáme do znalostí, že není agent
+                    nextScenePath = previousSceneId + '_identified_kyvadlo_success'; // Použijeme stejnou success větev pro kyvadlo odhalení
+                } else { // 'yes' nebo 'unsure'
+                    resultText = `<span class='fooled'>CHYBA! Kyvadlo jasně ukazovalo 'NE' (točilo se v kruhu), ale ty jsi ho špatně interpretoval nebo jsi ho dokonce označil za agenta! Tímto jsi se nechal oklamat nedůvěrou a ztratil jsi spojence.</span>`;
+                    gameData.player.fooledCount++;
+                    nextScenePath = previousSceneId + '_fooled';
+                }
+            }
+
+            document.getElementById('kyvadlo-game-area').innerHTML = `<p>${resultText}</p>`;
+            
+            setTimeout(() => {
+                currentScene = nextScenePath;
+                displayScene(); 
+            }, 3000);
+        }
+
+        // --- Fízl Ambush Mini-hra Logic ---
+        let fízlClicksNeeded = 5;
+        let fízlClicksCount = 0;
+        let fízlTimer = null;
+        let fízlTimeLimit = 5; // seconds
+
+        function startFízlAmbushMiniGame() {
+            const scene = gameData.scenes[currentScene];
+            gameOutput.innerHTML = `<p>${scene.text}</p>`;
+            gameChoices.innerHTML = ''; // Clear main choices
+
+            gameChoices.innerHTML = `
+                <div id="fízl-game-area">
+                    <p>Fízl je na tebe připraven! Musíš se mu bránit silou a rychlostí!</p>
+                    <p id="fízl-clicks">Kliknutí: ${fízlClicksCount} / ${fízlClicksNeeded}</p>
+                    <p id="fízl-timer">Čas: ${fízlTimeLimit}s</p>
+                    <div id="fízl-button-container">
+                        <button id="fízl-button-target" onclick="fízlClick()">BRÁNIT SE!</button>
+                    </div>
+                    <button onclick="attemptFízlEscape()">Zkusit utéct (risk)</button>
+                    <button onclick="surrenderToFízl()">Vzdat se (selhání)</button>
+                </div>
+            `;
+            
+            fízlClicksCount = 0;
+            document.getElementById('fízl-clicks').textContent = `Kliknutí: ${fízlClicksCount} / ${fízlClicksNeeded}`;
+            document.getElementById('fízl-button-target').classList.remove('hit');
+
+            fízlTimer = setTimeout(() => {
+                if (fízlClicksCount < fízlClicksNeeded) {
+                    currentScene = 'fízl_combat_failure';
+                    displayScene();
+                }
+            }, fízlTimeLimit * 1000);
+        }
+
+        function fízlClick() {
+            fízlClicksCount++;
+            document.getElementById('fízl-clicks').textContent = `Kliknutí: ${fízlClicksCount} / ${fízlClicksNeeded}`;
+            document.getElementById('fízl-button-target').classList.add('hit');
+            setTimeout(() => {
+                document.getElementById('fízl-button-target').classList.remove('hit');
+            }, 100);
+
+            if (fízlClicksCount >= fízlClicksNeeded) {
+                clearTimeout(fízlTimer);
+                // Před přechodem na úspěch boje s fízlem si uložíme kontext pro návrat ke kyvadlu
+                gameData.scenes.fízl_combat_success.targetChar = gameData.scenes.fízl_ambush_mini_game.targetChar;
+                gameData.scenes.fízl_combat_success.returnToScene = gameData.scenes.fízl_ambush_mini_game.returnToScene;
+                currentScene = 'fízl_combat_success';
+                displayScene();
+            }
+        }
+
+        function attemptFízlEscape() {
+            clearTimeout(fízlTimer);
+            if (Math.random() < 0.6) { // 60% šance na útěk
+                // Uložíme kontext i pro úspěšný útěk
+                gameData.scenes.fízl_escape_success.targetChar = gameData.scenes.fízl_ambush_mini_game.targetChar;
+                gameData.scenes.fízl_escape_success.returnToScene = gameData.scenes.fízl_ambush_mini_game.returnToScene;
+                currentScene = 'fízl_escape_success';
+            } else {
+                currentScene = 'fízl_escape_failure';
+            }
+            displayScene();
+        }
+
+        function surrenderToFízl() {
+            clearTimeout(fízlTimer);
+            currentScene = 'end_failure'; // Přímé selhání
+            displayScene();
+        }
+
+        // Spustíme hru při načtení stránky
+        displayScene();
+    </script>
+</body>
+</html>
